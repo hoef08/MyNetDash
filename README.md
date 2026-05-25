@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # NET.MONITOR
 
 Leichtgewichtiges Network-Monitoring-Dashboard für dein Heimnetz. Läuft als
@@ -734,3 +735,7 @@ Shell-Befehle schlagen fehl. Log-Level auf "Ausführlich" stellen und
 **Dashboard lädt nicht** — Port 3000 belegt? Compose-Datei anpassen.
 
 **ARM/v7 (Pi 3)** funktioniert. Erster Build dauert länger.
+=======
+# MyNetDash
+MonitoringWebApp für lokales Netzwerk
+>>>>>>> 1e69355d6e077d84992d14a46799db42b1948e25
