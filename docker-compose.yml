@@ -1,0 +1,26 @@
+services:
+  net-monitor:
+    build: .
+    # Alternative: use a prebuilt image
+    # image: your-user/net-monitor:latest
+    container_name: net-monitor
+    restart: unless-stopped
+
+    # Host networking gives the container direct access to your LAN.
+    # That's what you want on a Raspberry Pi so SNMP UDP and HTTP
+    # probes can reach devices on 192.168.x.x directly.
+    network_mode: host
+    # Without host networking you'd instead use:
+    # ports:
+    #   - "3000:3000"
+
+    environment:
+      - PORT=3000
+      - DATA_DIR=/data
+      - TZ=Europe/Berlin
+
+    volumes:
+      - ./data:/data
+      # Persists ADB RSA keys so the Shield only needs to confirm the
+      # fingerprint once, even after container rebuilds.
+      - ./data/adb:/home/node/.android

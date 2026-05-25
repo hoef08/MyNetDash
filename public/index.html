@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NET.MONITOR</title>
+<link rel="stylesheet" href="/styles.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2310b981'/%3E%3Ctext x='8' y='11' font-family='monospace' font-size='8' font-weight='700' text-anchor='middle' fill='%23022c22'%3E.%3C/text%3E%3C/svg%3E">
+<script>
+  // Apply theme synchronously before first paint, to avoid a flash.
+  (function(){
+    try {
+      var saved = localStorage.getItem('nm-theme') || 'dark';
+      var resolved = saved;
+      if (saved === 'auto') {
+        resolved = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+      document.documentElement.setAttribute('data-theme', resolved);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  })();
+</script>
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <div class="bg-grid"></div>
+
+  <main class="shell">
+    <!-- HEADER -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+          <span class="pulse"></span>
+        </div>
+        <div>
+          <h1>ahs2000 NET<span class="dot">.</span>MONITOR v13.3</h1>
+          <p class="sub">Local Network Operations</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="btnTheme" class="btn btn-ghost btn-icon" title="Theme wechseln" aria-label="Theme wechseln"></button>
+        <button id="btnRefresh" class="btn btn-ghost"><span class="i-refresh"></span>Alle prüfen</button>
+        <button id="btnSettings" class="btn btn-ghost"><span class="i-settings"></span>Einstellungen</button>
+        <button id="btnAdd" class="btn btn-primary"><span class="i-plus"></span>Gerät hinzufügen</button>
+      </div>
+    </header>
+
+    <!-- STATS -->
+    <section class="stats" id="stats"></section>
+
+    <!-- FILTERS -->
+    <section class="filters">
+      <div class="search">
+        <span class="i-search"></span>
+        <input id="search" placeholder="Suche nach Name oder IP…" />
+      </div>
+      <div class="filter-row">
+        <span class="label">Typ</span>
+        <select id="typeFilter">
+          <option value="all">Alle</option>
+        </select>
+      </div>
+      <div class="filter-row">
+        <span class="label">Status</span>
+        <div class="segmented" id="statusFilter">
+          <button data-val="all" class="active">Alle</button>
+          <button data-val="online">Online</button>
+          <button data-val="offline">Offline</button>
+          <button data-val="unknown">Andere</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- GRID -->
+    <section id="grid" class="grid"></section>
+
+    <!-- FOOTER -->
+    <footer id="footer" class="footer"></footer>
+  </main>
+
+  <!-- Device modal -->
+  <div class="modal" id="deviceModal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-head">
+        <h3 id="deviceModalTitle">Gerät hinzufügen</h3>
+        <button class="icon-btn" data-close>×</button>
+      </div>
+      <form id="deviceForm" class="modal-body">
+        <label class="field">
+          <span>Name</span>
+          <input name="name" required placeholder="z.B. Synology DS920+" />
+        </label>
+        <div class="row">
+          <label class="field grow-2">
+            <span>Host / IP</span>
+            <input name="host" required placeholder="192.168.1.10" />
+          </label>
+          <label class="field">
+            <span>Port</span>
+            <input name="port" type="number" placeholder="80" />
+          </label>
+        </div>
+        <div class="row">
+          <label class="field">
+            <span>Typ</span>
+            <select name="type" id="typeSelect"></select>
+          </label>
+          <label class="field">
+            <span>Check-Methode</span>
+            <select name="method" id="methodSelect">
+              <option value="http">HTTP</option>
+              <option value="snmp">SNMP</option>
+              <option value="tcp">TCP Port</option>
+              <option value="fritzbox">FRITZ!Box</option>
+              <option value="avr">Denon / Marantz AVR</option>
+              <option value="hue">Philips Hue Bridge</option>
+              <option value="salt">Salt Fiber Box</option>
+              <option value="echo">Amazon Echo / Alexa</option>
+              <option value="adb">NVIDIA Shield (ADB)</option>
+            </select>
+          </label>
+        </div>
+
+        <div data-method="http" class="method-block">
+          <label class="field">
+            <span>Protokoll</span>
+            <select name="protocol">
+              <option value="http">HTTP</option>
+              <option value="https">HTTPS</option>
+            </select>
+          </label>
+        </div>
+
+        <div data-method="fritzbox" class="method-block" hidden>
+          <p class="fritz-hint">
+            Voraussetzung: in der FRITZ!Box <em>Heimnetz → Netzwerk → Netzwerkeinstellungen</em>
+            die Punkte <strong>"Zugriff für Anwendungen zulassen"</strong> und
+            <strong>"Statusinformationen über UPnP übertragen"</strong> aktivieren.
+          </p>
+          <div class="row">
+            <label class="field grow-2">
+              <span>Benutzer (für Login-pflichtige Metriken)</span>
+              <input name="fritz.username" placeholder="leer = nur öffentliche Metriken" autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Passwort</span>
+              <input name="fritz.password" type="password" autocomplete="off" />
+            </label>
+          </div>
+
+          <div class="metrics-editor">
+            <div class="metrics-editor-head">
+              <span class="section-label" style="margin-top:0">FRITZ!Box-Metriken</span>
+              <div class="metrics-editor-actions">
+                <select id="fritzPresetSelect">
+                  <option value="">Preset wählen…</option>
+                </select>
+                <button type="button" id="btnApplyFritzPreset" class="btn btn-ghost btn-xs">Anwenden</button>
+                <button type="button" id="btnFritzTest"        class="btn btn-ghost btn-xs">Verbindung testen</button>
+              </div>
+            </div>
+            <div id="fritzMetricsList" class="fritz-metrics-list"></div>
+            <div id="fritzTestResult" class="fritz-test-result" hidden></div>
+          </div>
+        </div>
+
+        <div data-method="avr" class="method-block" hidden>
+          <p class="fritz-hint">
+            Voraussetzung: Im AVR-Menü <em>Netzwerk → Netzwerksteuerung</em>
+            auf <strong>"Immer ein"</strong> stellen — sonst antwortet der
+            Receiver im Standby nicht. Funktioniert mit Denon und Marantz
+            (Cinema-Reihe, AVR-X, NR/SR).
+          </p>
+          <label class="field">
+            <span>Port (8080 für 2016+, 80 für ältere)</span>
+            <input name="avr.port" type="number" placeholder="8080" />
+          </label>
+
+          <div class="metrics-editor">
+            <div class="metrics-editor-head">
+              <span class="section-label" style="margin-top:0">AVR-Metriken</span>
+              <div class="metrics-editor-actions">
+                <select id="avrPresetSelect">
+                  <option value="">Preset wählen…</option>
+                </select>
+                <button type="button" id="btnApplyAvrPreset" class="btn btn-ghost btn-xs">Anwenden</button>
+                <button type="button" id="btnAvrTest"        class="btn btn-ghost btn-xs">Verbindung testen</button>
+              </div>
+            </div>
+            <div id="avrMetricsList" class="fritz-metrics-list"></div>
+            <div id="avrTestResult" class="fritz-test-result" hidden></div>
+          </div>
+        </div>
+
+        <div data-method="hue" class="method-block" hidden>
+          <p class="fritz-hint">
+            Voraussetzung: API-Token (User) auf der Hue Bridge angelegt
+            (über Bridge-Knopf + <code>POST /api</code>). Funktioniert mit
+            allen Hue-Bridges, Lampen, Sensoren und Schaltern.
+            <br><br>
+            <strong>Hue Bridge Gen 2</strong> nutzt nur HTTPS (Port 443) mit
+            selbstsigniertem Zertifikat. Bei älteren Bridges HTTPS abwählen
+            und Port 80 nutzen.
+          </p>
+          <div class="row">
+            <label class="field grow-2">
+              <span>API-Token</span>
+              <input name="hue.token" placeholder="z.B. abcdefg1234567..." autocomplete="off" />
+            </label>
+            <label class="field">
+              <span>Port</span>
+              <input name="hue.port" type="number" placeholder="(auto)" />
+            </label>
+          </div>
+          <label class="checkbox-row" style="margin: 4px 0 12px 0;">
+            <input name="hue.tls" type="checkbox" checked />
+            <span>HTTPS verwenden (Default für Bridge Gen 2)</span>
+          </label>
+
+          <div class="metrics-editor">
+            <div class="metrics-editor-head">
+              <span class="section-label" style="margin-top:0">Übersichts-Metriken</span>
+              <div class="metrics-editor-actions">
+                <select id="huePresetSelect">
+                  <option value="">Preset wählen…</option>
+                </select>
+                <button type="button" id="btnApplyHuePreset" class="btn btn-ghost btn-xs">Anwenden</button>
+              </div>
+            </div>
+            <div id="hueSummaryList" class="fritz-metrics-list"></div>
+          </div>
+
+          <div class="metrics-editor">
+            <div class="metrics-editor-head">
+              <span class="section-label" style="margin-top:0">Einzelne Geräte</span>
+              <div class="metrics-editor-actions">
+                <button type="button" id="btnHueDiscover" class="btn btn-ghost btn-xs">Geräte erkennen</button>
+                <button type="button" id="btnHueTest"     class="btn btn-ghost btn-xs">Verbindung testen</button>
+              </div>
+            </div>
+            <div id="hueItemsList" class="hue-items-list">
+              <p class="hue-empty">Klicke "Geräte erkennen" um Lampen, Sensoren und Schalter aufzulisten.</p>
+            </div>
+            <div id="hueTestResult" class="fritz-test-result" hidden></div>
+          </div>
+        </div>
+
+        <div data-method="salt" class="method-block" hidden>
+          <p class="fritz-hint">
+            Salt Fiber Box (W7 / X6 / ältere Modelle) — liest Status, Netzwerk
+            und <strong>optische Telemetrie (RX/TX-Power, Temperatur)</strong>
+            über die JSON-API <code>/api/device</code>.
+            <br><br>
+            Die Box nutzt HTTPS mit selbst-signiertem Zertifikat. Kein Login
+            erforderlich für diesen Endpunkt.
+          </p>
+          <div class="row">
+            <label class="field">
+              <span>Port</span>
+              <input name="salt.port" type="number" placeholder="443" />
+            </label>
+            <label class="checkbox-row" style="margin-top: 22px;">
+              <input name="salt.tls" type="checkbox" checked />
+              <span>HTTPS verwenden</span>
+            </label>
+          </div>
+
+          <div class="metrics-editor">
+            <div class="metrics-editor-head">
+              <span class="section-label" style="margin-top:0">Salt-Metriken</span>
+              <div class="metrics-editor-actions">
+                <select id="saltPresetSelect">
+                  <option value="">Preset wählen…</option>
+                </select>
+                <button type="button" id="btnApplySaltPreset" class="btn btn-ghost btn-xs">Anwenden</button>
+                <button type="button" id="btnSaltTest"        class="btn btn-ghost btn-xs">Verbindung testen</button>
+              </div>
+            </div>
+            <div id="saltMetricsList" class="fritz-metrics-list"></div>
+            <div id="saltTestResult" class="fritz-test-result" hidden></div>
+          </div>
+        </div>
+
+        <div data-method="echo" class="method-block" hidden>
+          <!-- hidden field – cookie is stored here, never shown to user -->
+          <input name="echo.cookie" type="hidden" />
+
+          <p class="fritz-hint">
+            Einmalig mit Amazon-Account anmelden. Ein lokaler Login-Server
+            startet kurz auf Port 3001 — du loggst dich im Browser ein, danach
+            läuft alles automatisch. Das Session-Cookie wird nur lokal
+            gespeichert.
+          </p>
+
+          <div class="row" style="align-items:flex-end;gap:10px">
+            <label class="field">
+              <span>Region</span>
+              <select name="echo.region">
+                <option value="de">amazon.de (DE)</option>
+                <option value="com">amazon.com (USA)</option>
+                <option value="co.uk">amazon.co.uk (UK)</option>
+                <option value="fr">amazon.fr (FR)</option>
+                <option value="it">amazon.it (IT)</option>
+                <option value="es">amazon.es (ES)</option>
+                <option value="ca">amazon.ca (CA)</option>
+                <option value="com.au">amazon.com.au (AU)</option>
+                <option value="co.jp">amazon.co.jp (JP)</option>
+              </select>
+            </label>
+            <div style="display:flex;flex-direction:column;gap:4px;padding-bottom:2px">
+              <div id="echoAuthStatus" class="echo-auth-status not-logged-in">Nicht angemeldet</div>
+              <button type="button" id="btnEchoLogin" class="btn btn-ghost btn-xs">Amazon Login…</button>
+            </div>
+          </div>
+
+          <div class="row">
+            <label class="field grow-2">
+              <span>Gerät</span>
+              <input name="echo.serial" placeholder="Seriennummer — automatisch nach Login" />
+            </label>
+          </div>
+          <div id="echoDiscoveredList" class="hue-items-list" hidden></div>
+
+          <div class="metrics-editor">
+            <div class="metrics-editor-head">
+              <span class="section-label" style="margin-top:0">Echo-Metriken</span>
+              <div class="metrics-editor-actions">
+                <select id="echoPresetSelect">
+                  <option value="">Preset wählen…</option>
+                </select>
+                <button type="button" id="btnApplyEchoPreset" class="btn btn-ghost btn-xs">Anwenden</button>
+                <button type="button" id="btnEchoTest"        class="btn btn-ghost btn-xs">Verbindung testen</button>
+              </div>
+            </div>
+            <div id="echoMetricsList" class="fritz-metrics-list"></div>
+            <div id="echoTestResult" class="fritz-test-result" hidden></div>
+          </div>
+        </div>
+
+        <div data-method="adb" class="method-block" hidden>
+          <p class="fritz-hint">
+            Voraussetzung: <em>Einstellungen → Geräteeinstellungen → Entwickleroptionen → Netzwerk-Debugging</em> auf der Shield aktivieren (Port 5555).
+            Beim ersten Verbinden erscheint ein RSA-Dialog auf dem Shield — einmalig bestätigen.
+          </p>
+
+          <div class="row">
+            <label class="field">
+              <span>ADB Port (Standard: 5555)</span>
+              <input name="shield.port" type="number" placeholder="5555" />
+            </label>
+          </div>
+
+          <div class="metrics-editor">
+            <div class="metrics-editor-head">
+              <span class="section-label" style="margin-top:0">Shield-Metriken</span>
+              <div class="metrics-editor-actions">
+                <select id="shieldPresetSelect">
+                  <option value="">Preset wählen…</option>
+                </select>
+                <button type="button" id="btnApplyShieldPreset" class="btn btn-ghost btn-xs">Anwenden</button>
+                <button type="button" id="btnShieldTest"        class="btn btn-ghost btn-xs">Verbindung testen</button>
+              </div>
+            </div>
+            <div id="shieldMetricsList" class="fritz-metrics-list"></div>
+            <div id="shieldTestResult" class="fritz-test-result" hidden></div>
+          </div>
+        </div>
+
+        <div data-method="snmp" class="method-block" hidden>
+          <div class="row">
+            <label class="field">
+              <span>Community</span>
+              <input name="snmp.community" placeholder="public" />
+            </label>
+            <label class="field">
+              <span>Version</span>
+              <select name="snmp.version">
+                <option value="2c">v2c</option>
+                <option value="1">v1</option>
+                <option value="3">v3</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Port</span>
+              <input name="snmp.port" type="number" placeholder="161" />
+            </label>
+          </div>
+          <details class="v3-details">
+            <summary>SNMPv3 Auth (optional)</summary>
+            <div class="row">
+              <label class="field"><span>User</span><input name="snmp.user" /></label>
+              <label class="field">
+                <span>Auth-Protokoll</span>
+                <select name="snmp.authProtocol"><option value="sha">SHA</option><option value="md5">MD5</option></select>
+              </label>
+            </div>
+            <div class="row">
+              <label class="field"><span>Auth-Key</span><input name="snmp.authKey" type="password" /></label>
+              <label class="field"><span>Priv-Key</span><input name="snmp.privKey" type="password" /></label>
+              <label class="field">
+                <span>Priv-Protokoll</span>
+                <select name="snmp.privProtocol"><option value="aes">AES</option><option value="des">DES</option></select>
+              </label>
+            </div>
+          </details>
+
+          <div class="metrics-editor">
+            <div class="metrics-editor-head">
+              <span class="section-label" style="margin-top:0">Angezeigte Metriken (OIDs)</span>
+              <div class="metrics-editor-actions">
+                <select id="presetSelect">
+                  <option value="">Preset einfügen…</option>
+                </select>
+                <button type="button" id="btnApplyPreset" class="btn btn-ghost btn-xs">Hinzufügen</button>
+                <select id="mibSelect">
+                  <option value="">MIB-Metrik einfügen…</option>
+                </select>
+                <button type="button" id="btnAddMibMetric" class="btn btn-ghost btn-xs">Hinzufügen</button>
+                <button type="button" id="btnSnmpWalk"   class="btn btn-ghost btn-xs">SNMP-Walk</button>
+                <button type="button" id="btnAddMetric"  class="btn btn-ghost btn-xs">+ Eigene</button>
+              </div>
+            </div>
+            <div id="metricsList" class="metrics-list"></div>
+            <div id="walkResults" class="walk-results" hidden></div>
+          </div>
+        </div>
+
+        <div class="rules-editor">
+          <div class="rules-editor-head">
+            <span class="section-label" style="margin-top:0">Benachrichtigungsregeln</span>
+            <button type="button" id="btnAddRule" class="btn btn-ghost btn-xs">+ Regel</button>
+          </div>
+          <p class="rules-hint">
+            Wenn keine Regel definiert ist, gelten die globalen Channel-Einstellungen
+            (Online/Offline-Wechsel an alle aktiven Channels).
+          </p>
+          <div id="rulesList" class="rules-list"></div>
+        </div>
+
+        <div class="rules-editor">
+          <div class="rules-editor-head">
+            <span class="section-label" style="margin-top:0">Wert-Übersetzungen (Mappings)</span>
+            <button type="button" id="btnAddMapping" class="btn btn-ghost btn-xs">+ Mapping</button>
+          </div>
+          <p class="rules-hint">
+            Übersetze numerische Codes in lesbare Texte — z.B. Drucker-Status
+            <code>3</code> → <code>Idle</code>. Standard-Mappings (SNMP, Drucker,
+            Interfaces …) können direkt übernommen werden.
+          </p>
+          <div id="mappingsList" class="rules-list"></div>
+        </div>
+
+        <div class="modal-foot">
+          <button type="button" id="btnDeleteDevice" class="btn btn-danger" hidden>Löschen</button>
+          <span style="flex:1"></span>
+          <button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
+          <button type="submit" class="btn btn-primary">Speichern</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Settings modal -->
+  <div class="modal" id="settingsModal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel">
+      <div class="modal-head">
+        <h3>Einstellungen</h3>
+        <button class="icon-btn" data-close>×</button>
+      </div>
+      <form id="settingsForm" class="modal-body">
+        <div class="theme-row">
+          <div>
+            <strong>Erscheinungsbild</strong>
+            <p>Hell, dunkel oder dem System folgen</p>
+          </div>
+          <div class="segmented" id="themeChooser">
+            <button type="button" data-theme-val="dark">Dunkel</button>
+            <button type="button" data-theme-val="light">Hell</button>
+            <button type="button" data-theme-val="auto">Auto</button>
+          </div>
+        </div>
+
+        <div class="row">
+          <label class="field">
+            <span>Intervall (Sekunden)</span>
+            <input name="interval" type="number" min="5" max="600" />
+          </label>
+          <label class="field">
+            <span>Timeout (Sekunden)</span>
+            <input name="timeout" type="number" min="1" max="30" />
+          </label>
+          <label class="field">
+            <span>Log-Level</span>
+            <select name="logLevel">
+              <option value="error">Nur Fehler</option>
+              <option value="warn">Warnungen</option>
+              <option value="info">Standard</option>
+              <option value="debug">Ausführlich</option>
+            </select>
+          </label>
+        </div>
+
+        <label class="toggle-row">
+          <div>
+            <strong>Auto-Refresh</strong>
+            <p>Geräte automatisch im Intervall prüfen</p>
+          </div>
+          <input type="checkbox" name="autoRefresh" class="toggle" />
+        </label>
+
+        <h4 class="section-label">SNMP Defaults</h4>
+        <div class="row">
+          <label class="field">
+            <span>Community</span>
+            <input name="snmp.community" placeholder="public" />
+          </label>
+          <label class="field">
+            <span>Version</span>
+            <select name="snmp.version"><option>2c</option><option>1</option><option>3</option></select>
+          </label>
+          <label class="field">
+            <span>Port</span>
+            <input name="snmp.port" type="number" placeholder="161" />
+          </label>
+        </div>
+
+        <h4 class="section-label">MIB-Dateien</h4>
+        <div id="mibsList" class="mibs-list"></div>
+        <div class="mib-upload-row">
+          <input type="file" id="mibFile" accept=".mib,.txt,.my" hidden />
+          <button type="button" id="btnUploadMib" class="btn btn-ghost">+ MIB-Datei hochladen</button>
+          <span class="mib-hint">Text-Datei im ASN.1-MIB-Format (z.B. SYNOLOGY-SYSTEM.mib)</span>
+        </div>
+
+        <h4 class="section-label">Benachrichtigungen</h4>
+        <div id="channelsList" class="channels-list"></div>
+        <div class="channel-add-row">
+          <select id="newChannelType">
+            <option value="discord">Discord</option>
+            <option value="telegram">Telegram</option>
+            <option value="ntfy">ntfy.sh</option>
+            <option value="webhook">Generic Webhook</option>
+          </select>
+          <button type="button" id="btnAddChannel" class="btn btn-ghost">+ Channel</button>
+        </div>
+
+        <h4 class="section-label">Daten</h4>
+        <div class="data-actions">
+          <button type="button" id="btnExport" class="btn btn-ghost">Export JSON</button>
+          <button type="button" id="btnImport" class="btn btn-ghost">Import JSON</button>
+          <button type="button" id="btnReset"  class="btn btn-danger">Alles zurücksetzen</button>
+        </div>
+        <input id="importFile" type="file" accept="application/json" hidden />
+
+        <div class="modal-foot">
+          <button type="button" class="btn btn-ghost" data-close>Abbrechen</button>
+          <button type="submit" class="btn btn-primary">Speichern</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Device detail modal -->
+  <div class="modal" id="detailModal" hidden>
+    <div class="modal-backdrop"></div>
+    <div class="modal-panel modal-panel-wide">
+      <div class="modal-head">
+        <h3 id="detailTitle">Details</h3>
+        <button class="icon-btn" data-close>×</button>
+      </div>
+      <div class="modal-body" id="detailBody"></div>
+    </div>
+  </div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>
